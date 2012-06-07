@@ -43,30 +43,22 @@
 
 package org.eclipse.jgit.storage.cassandra;
 
-import static me.prettyprint.hector.api.factory.HFactory.createMultigetSliceQuery;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import com.google.protobuf.InvalidProtocolBufferException;
 import me.prettyprint.cassandra.serializers.BytesArraySerializer;
 import me.prettyprint.hector.api.beans.HColumn;
 import me.prettyprint.hector.api.beans.Row;
 import me.prettyprint.hector.api.beans.Rows;
 import me.prettyprint.hector.api.query.MultigetSliceQuery;
-
-import org.eclipse.jgit.storage.dht.AsyncCallback;
-import org.eclipse.jgit.storage.dht.ChunkKey;
-import org.eclipse.jgit.storage.dht.DhtException;
-import org.eclipse.jgit.storage.dht.ObjectIndexKey;
-import org.eclipse.jgit.storage.dht.ObjectInfo;
+import org.eclipse.jgit.generated.storage.dht.proto.GitStore;
+import org.eclipse.jgit.storage.dht.*;
 import org.eclipse.jgit.storage.dht.spi.Context;
 import org.eclipse.jgit.storage.dht.spi.ObjectIndexTable;
 import org.eclipse.jgit.storage.dht.spi.WriteBuffer;
 import org.eclipse.jgit.storage.dht.spi.util.ColumnMatcher;
+
+import java.util.*;
+
+import static me.prettyprint.hector.api.factory.HFactory.createMultigetSliceQuery;
 
 final class CsObjectIndexTable implements ObjectIndexTable {
 	private static final BytesArraySerializer S = CassandraDatabase.S;
@@ -108,7 +100,7 @@ final class CsObjectIndexTable implements ObjectIndexTable {
 	}
 
 	private Map<ObjectIndexKey, Collection<ObjectInfo>> findChunks(
-			Rows<byte[], byte[], byte[]> rows) {
+			Rows<byte[], byte[], byte[]> rows) throws InvalidProtocolBufferException {
 		Map<ObjectIndexKey, Collection<ObjectInfo>> map;
 
 		map = new HashMap<ObjectIndexKey, Collection<ObjectInfo>>();
@@ -130,7 +122,10 @@ final class CsObjectIndexTable implements ObjectIndexTable {
 					continue;
 				ChunkKey k = ChunkKey.fromBytes(colInfo.suffix(name));
 				long time = cell.getClock();
-				list.add(ObjectInfo.fromBytes(k, cell.getValue(), time));
+        list.add(new ObjectInfo(
+        							k,
+        							cell.getClock(),
+        							GitStore.ObjectInfo.parseFrom(cell.getValue())));
 			}
 		}
 		return map;
@@ -140,10 +135,11 @@ final class CsObjectIndexTable implements ObjectIndexTable {
 			throws DhtException {
 		CsBuffer buf = (CsBuffer) buffer;
 		ChunkKey key = link.getChunkKey();
+
 		buf.put(CF, //
 				objId.asBytes(), //
 				colInfo.append(key.asBytes()), //
-				link.asBytes());
+				link.getData().toByteArray());
 	}
 
 	public void remove(ObjectIndexKey objId, ChunkKey chunk, WriteBuffer buffer)

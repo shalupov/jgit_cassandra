@@ -43,26 +43,26 @@
 
 package org.eclipse.jgit.storage.cassandra;
 
-import static org.eclipse.jgit.storage.cassandra.CassandraDatabase.addInsertion;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.TimeoutException;
-
+import com.google.protobuf.InvalidProtocolBufferException;
 import me.prettyprint.cassandra.serializers.BytesArraySerializer;
 import me.prettyprint.hector.api.beans.HColumn;
 import me.prettyprint.hector.api.exceptions.HectorException;
 import me.prettyprint.hector.api.factory.HFactory;
 import me.prettyprint.hector.api.query.SliceQuery;
-
+import org.eclipse.jgit.generated.storage.dht.proto.GitStore;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.storage.dht.DhtException;
-import org.eclipse.jgit.storage.dht.RefData;
 import org.eclipse.jgit.storage.dht.RefKey;
 import org.eclipse.jgit.storage.dht.RepositoryKey;
 import org.eclipse.jgit.storage.dht.spi.Context;
 import org.eclipse.jgit.storage.dht.spi.RefTable;
 import org.eclipse.jgit.util.RawParseUtils;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeoutException;
+
+import static org.eclipse.jgit.storage.cassandra.CassandraDatabase.addInsertion;
 
 final class CsRefTable implements RefTable {
 	private static final BytesArraySerializer S = CassandraDatabase.S;
@@ -75,7 +75,7 @@ final class CsRefTable implements RefTable {
 		this.db = db;
 	}
 
-	public Map<RefKey, RefData> getAll(Context options, RepositoryKey repository)
+	public Map<RefKey, GitStore.RefData> getAll(Context options, RepositoryKey repository)
 			throws DhtException {
 		try {
 			SliceQuery<byte[], byte[], byte[]> q;
@@ -86,34 +86,36 @@ final class CsRefTable implements RefTable {
 			q.setRange(new byte[] { 0 }, new byte[] {}, false,
 					Integer.MAX_VALUE);
 
-			Map<RefKey, RefData> r = new HashMap<RefKey, RefData>();
+			Map<RefKey, GitStore.RefData> r = new HashMap<RefKey, GitStore.RefData>();
 			for (HColumn<byte[], byte[]> c : q.execute().get().getColumns()) {
 				r.put(
 					RefKey.create(repository, RawParseUtils.decode(c.getName())),
-					RefData.fromBytes(c.getValue()));
+					GitStore.RefData.parseFrom(c.getValue()));
 			}
 			return r;
 
 		} catch (HectorException err) {
 			throw new DhtException(err);
-		}
-	}
+		} catch (InvalidProtocolBufferException err) {
+      throw new DhtException(err);
+    }
+  }
 
-	public boolean compareAndPut(RefKey refKey, RefData oldData, RefData newData)
+	public boolean compareAndPut(RefKey refKey, GitStore.RefData oldData, GitStore.RefData newData)
 			throws DhtException, TimeoutException {
 		// TODO Use ZooKeeper for a proper transaction on refKey;
 		try {
 			addInsertion(db.createMutator(), CF, //
 					refKey.getRepositoryKey().asBytes(), //
 					Constants.encode(refKey.getName()), //
-					newData.asBytes()).execute();
+					newData.toByteArray()).execute();
 			return true;
 		} catch (HectorException err) {
 			throw new DhtException(err);
 		}
 	}
 
-	public boolean compareAndRemove(RefKey refKey, RefData oldData)
+	public boolean compareAndRemove(RefKey refKey, GitStore.RefData oldData)
 			throws DhtException, TimeoutException {
 		// TODO Use ZooKeeper for a proper transaction on refKey;
 		db.createMutator().addDeletion( //

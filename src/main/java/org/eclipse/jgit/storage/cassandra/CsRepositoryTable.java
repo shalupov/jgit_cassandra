@@ -43,27 +43,23 @@
 
 package org.eclipse.jgit.storage.cassandra;
 
+import com.google.protobuf.InvalidProtocolBufferException;
+import me.prettyprint.cassandra.serializers.BytesArraySerializer;
+import me.prettyprint.hector.api.beans.ColumnSlice;
+import me.prettyprint.hector.api.beans.HColumn;
+import me.prettyprint.hector.api.factory.HFactory;
+import org.eclipse.jgit.generated.storage.dht.proto.GitStore;
+import org.eclipse.jgit.storage.dht.*;
+import org.eclipse.jgit.storage.dht.spi.Context;
+import org.eclipse.jgit.storage.dht.spi.RepositoryTable;
+import org.eclipse.jgit.storage.dht.spi.WriteBuffer;
+import org.eclipse.jgit.storage.dht.spi.util.ColumnMatcher;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
-
-import me.prettyprint.cassandra.serializers.BytesArraySerializer;
-import me.prettyprint.hector.api.beans.ColumnSlice;
-import me.prettyprint.hector.api.beans.HColumn;
-import me.prettyprint.hector.api.factory.HFactory;
-
-import org.eclipse.jgit.storage.dht.CachedPackInfo;
-import org.eclipse.jgit.storage.dht.CachedPackKey;
-import org.eclipse.jgit.storage.dht.ChunkInfo;
-import org.eclipse.jgit.storage.dht.ChunkKey;
-import org.eclipse.jgit.storage.dht.DhtException;
-import org.eclipse.jgit.storage.dht.RepositoryKey;
-import org.eclipse.jgit.storage.dht.spi.Context;
-import org.eclipse.jgit.storage.dht.spi.RepositoryTable;
-import org.eclipse.jgit.storage.dht.spi.WriteBuffer;
-import org.eclipse.jgit.storage.dht.spi.util.ColumnMatcher;
 
 class CsRepositoryTable implements RepositoryTable {
 	private static final BytesArraySerializer S = CassandraDatabase.S;
@@ -89,7 +85,7 @@ class CsRepositoryTable implements RepositoryTable {
 		return RepositoryKey.create((int) now);
 	}
 
-	public Collection<CachedPackInfo> getCachedPacks(RepositoryKey repo)
+	public Collection<GitStore.CachedPackInfo> getCachedPacks(RepositoryKey repo)
 			throws DhtException, TimeoutException {
 		ColumnSlice<byte[], byte[]> slice = HFactory
 				.createSliceQuery(db.getKeyspace(Context.LOCAL), S, S, S)
@@ -102,22 +98,27 @@ class CsRepositoryTable implements RepositoryTable {
 			return Collections.emptyList();
 
 		int estCnt = slice.getColumns().size();
-		List<CachedPackInfo> info = new ArrayList<CachedPackInfo>(estCnt);
+		List<GitStore.CachedPackInfo> info = new ArrayList<GitStore.CachedPackInfo>(estCnt);
 		for (HColumn<byte[], byte[]> col : slice.getColumns()) {
 			byte[] name = col.getName();
 			if (colCachedPack.sameFamily(name))
-				info.add(CachedPackInfo.fromBytes(col.getValue()));
-		}
+        try {
+          info.add(GitStore.CachedPackInfo.parseFrom(col.getValue()));
+        } catch (InvalidProtocolBufferException e) {
+          throw new DhtException(e);
+        }
+    }
 		return info;
 	}
 
-	public void put(RepositoryKey repo, CachedPackInfo info, WriteBuffer buffer)
+	public void put(RepositoryKey repo, GitStore.CachedPackInfo info, WriteBuffer buffer)
 			throws DhtException {
 		CsBuffer buf = (CsBuffer) buffer;
+    CachedPackKey key = CachedPackKey.fromInfo(info);
 		buf.put(CF, //
 				repo.asBytes(), //
-				colCachedPack.append(info.getRowKey()), //
-				info.asBytes());
+				colCachedPack.append(key.asBytes()), //
+				info.toByteArray());
 	}
 
 	public void remove(RepositoryKey repo, CachedPackKey key, WriteBuffer buffer)
@@ -133,7 +134,7 @@ class CsRepositoryTable implements RepositoryTable {
 		buf.put(CF, //
 				repo.asBytes(), //
 				colChunkInfo.append(key.asBytes()), //
-				info.asBytes());
+				info.getData().toByteArray());
 	}
 
 	public void remove(RepositoryKey repo, ChunkKey chunk, WriteBuffer buffer)

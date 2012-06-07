@@ -43,29 +43,26 @@
 
 package org.eclipse.jgit.storage.cassandra;
 
-import static me.prettyprint.hector.api.factory.HFactory.createColumn;
-import static me.prettyprint.hector.api.factory.HFactory.createMultigetSliceQuery;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-
+import com.google.protobuf.InvalidProtocolBufferException;
 import me.prettyprint.cassandra.serializers.BytesArraySerializer;
 import me.prettyprint.hector.api.beans.HColumn;
 import me.prettyprint.hector.api.beans.Row;
 import me.prettyprint.hector.api.beans.Rows;
 import me.prettyprint.hector.api.query.MultigetSliceQuery;
-
+import org.eclipse.jgit.generated.storage.dht.proto.GitStore;
 import org.eclipse.jgit.storage.dht.AsyncCallback;
 import org.eclipse.jgit.storage.dht.ChunkKey;
-import org.eclipse.jgit.storage.dht.ChunkMeta;
 import org.eclipse.jgit.storage.dht.DhtException;
 import org.eclipse.jgit.storage.dht.PackChunk;
 import org.eclipse.jgit.storage.dht.spi.ChunkTable;
 import org.eclipse.jgit.storage.dht.spi.Context;
 import org.eclipse.jgit.storage.dht.spi.WriteBuffer;
 import org.eclipse.jgit.storage.dht.spi.util.ColumnMatcher;
+
+import java.util.*;
+
+import static me.prettyprint.hector.api.factory.HFactory.createColumn;
+import static me.prettyprint.hector.api.factory.HFactory.createMultigetSliceQuery;
 
 final class CsChunkTable implements ChunkTable {
 	private static final BytesArraySerializer S = CassandraDatabase.S;
@@ -113,8 +110,29 @@ final class CsChunkTable implements ChunkTable {
 		});
 	}
 
-	private Collection<PackChunk.Members> parseChunks(
-			Rows<byte[], byte[], byte[]> rows) throws DhtException {
+  @Override
+  public void getMeta(Context options, Set<ChunkKey> keys, final AsyncCallback<Map<ChunkKey, GitStore.ChunkMeta>> callback) {
+    get(options, keys, new AsyncCallback<Collection<PackChunk.Members>>() {
+      @Override
+      public void onSuccess(Collection<PackChunk.Members> result) {
+        Map<ChunkKey, GitStore.ChunkMeta> out = new HashMap<ChunkKey, GitStore.ChunkMeta>();
+
+        for (PackChunk.Members members : result) {
+          out.put(members.getChunkKey(), members.getMeta());
+        }
+
+        callback.onSuccess(out);
+      }
+
+      @Override
+      public void onFailure(DhtException error) {
+        callback.onFailure(error);
+      }
+    });
+  }
+
+  private Collection<PackChunk.Members> parseChunks(
+			Rows<byte[], byte[], byte[]> rows) throws DhtException, InvalidProtocolBufferException {
 		Collection<PackChunk.Members> chunkList;
 		chunkList = new ArrayList<PackChunk.Members>(rows.getCount());
 
@@ -134,7 +152,7 @@ final class CsChunkTable implements ChunkTable {
 					m.setChunkIndex(cell.getValue());
 
 				else if (colMeta.sameName(col))
-					m.setMeta(ChunkMeta.fromBytes(key, cell.getValue()));
+					m.setMeta(GitStore.ChunkMeta.parseFrom(cell.getValue()));
 			}
 			chunkList.add(m);
 		}
@@ -153,7 +171,7 @@ final class CsChunkTable implements ChunkTable {
 			cols.add(createColumn(colIndex.name(), chunk.getChunkIndex(), S, S));
 
 		if (chunk.getMeta() != null)
-			cols.add(createColumn(colMeta.name(), chunk.getMeta().asBytes(), S, S));
+			cols.add(createColumn(colMeta.name(), chunk.getMeta().toByteArray(), S, S));
 
 		buf.put(CF, chunk.getChunkKey().asBytes(), cols);
 	}

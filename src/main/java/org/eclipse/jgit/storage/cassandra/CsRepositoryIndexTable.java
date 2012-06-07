@@ -43,20 +43,20 @@
 
 package org.eclipse.jgit.storage.cassandra;
 
-import static me.prettyprint.hector.api.factory.HFactory.createColumnQuery;
-
-import java.util.concurrent.TimeoutException;
-
 import me.prettyprint.cassandra.serializers.BytesArraySerializer;
 import me.prettyprint.hector.api.beans.HColumn;
 import me.prettyprint.hector.api.exceptions.HectorException;
-
+import org.apache.commons.lang.NotImplementedException;
 import org.eclipse.jgit.storage.dht.DhtException;
 import org.eclipse.jgit.storage.dht.RepositoryKey;
 import org.eclipse.jgit.storage.dht.RepositoryName;
 import org.eclipse.jgit.storage.dht.spi.Context;
 import org.eclipse.jgit.storage.dht.spi.RepositoryIndexTable;
 import org.eclipse.jgit.storage.dht.spi.util.ColumnMatcher;
+
+import java.util.concurrent.TimeoutException;
+
+import static me.prettyprint.hector.api.factory.HFactory.createColumnQuery;
 
 class CsRepositoryIndexTable implements RepositoryIndexTable {
 	private static final BytesArraySerializer S = CassandraDatabase.S;
@@ -111,4 +111,10 @@ class CsRepositoryIndexTable implements RepositoryIndexTable {
 
 		db.put(CF_REPOSITORY, key.asBytes(), colName.append(name.asBytes()), TRUE);
 	}
+
+  @Override
+  public void remove(RepositoryName name, RepositoryKey key) throws DhtException, TimeoutException {
+    // TODO
+    throw new NotImplementedException();
+  }
 }

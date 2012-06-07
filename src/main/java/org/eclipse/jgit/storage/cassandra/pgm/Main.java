@@ -43,9 +43,7 @@
 
 package org.eclipse.jgit.storage.cassandra.pgm;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
-
+import org.apache.log4j.BasicConfigurator;
 import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.pgm.Die;
@@ -53,6 +51,9 @@ import org.eclipse.jgit.storage.cassandra.CassandraDatabase;
 import org.eclipse.jgit.storage.cassandra.CassandraDatabaseBuilder;
 import org.eclipse.jgit.storage.cassandra.CassandraRepositoryBuilder;
 import org.eclipse.jgit.storage.dht.DhtException;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
 
 public class Main extends org.eclipse.jgit.pgm.Main {
 	static CassandraDatabase DB;
@@ -65,6 +66,8 @@ public class Main extends org.eclipse.jgit.pgm.Main {
 
 	public static void main(final String[] argv) {
 		try {
+      BasicConfigurator.configure();
+
 			new Main().run(argv);
 		} finally {
 			if (DB != null)
