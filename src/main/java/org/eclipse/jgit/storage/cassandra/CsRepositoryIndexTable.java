@@ -46,7 +46,6 @@ package org.eclipse.jgit.storage.cassandra;
 import me.prettyprint.cassandra.serializers.BytesArraySerializer;
 import me.prettyprint.hector.api.beans.HColumn;
 import me.prettyprint.hector.api.exceptions.HectorException;
-import org.apache.commons.lang.NotImplementedException;
 import org.eclipse.jgit.storage.dht.DhtException;
 import org.eclipse.jgit.storage.dht.RepositoryKey;
 import org.eclipse.jgit.storage.dht.RepositoryName;
@@ -108,13 +107,14 @@ class CsRepositoryIndexTable implements RepositoryIndexTable {
 			throws DhtException, TimeoutException {
 		// TODO Add proper row locking using ZooKeeper.
 		db.put(CF_REPOSITORY_INDEX, name.asBytes(), colId.name(), key.asBytes());
-
 		db.put(CF_REPOSITORY, key.asBytes(), colName.append(name.asBytes()), TRUE);
 	}
 
   @Override
   public void remove(RepositoryName name, RepositoryKey key) throws DhtException, TimeoutException {
-    // TODO
-    throw new NotImplementedException();
+    db.createMutator().delete(name.asBytes(), CF_REPOSITORY_INDEX, null, BytesArraySerializer.get());
+
+    if (key != null)
+      db.createMutator().delete(key.asBytes(), CF_REPOSITORY, colName.append(name.asBytes()), BytesArraySerializer.get());
   }
 }
